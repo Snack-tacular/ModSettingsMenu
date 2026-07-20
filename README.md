@@ -2,6 +2,17 @@
 
 A BepInEx plugin for **Sineus Arena** that injects a customized **Mod Settings** menu directly into the game's settings panel. It parses and manages mod configurations (`.cfg` files) dynamically from the `BepInEx/config` folder.
 
+## Previews
+
+### Mod Settings Button in Lobby
+![Mod Settings Button in Lobby](images/modsettingsbuttoninlobby.png)
+
+### Mod Settings Button In-Game
+![Mod Settings Button In-Game](images/modsettingsbuttoningame.png)
+
+### Mod Settings Menu Interface
+![Mod Settings Menu Interface](images/modsettingspreview.png)
+
 ## Features
 
 - **Seamless Injection**: Injects a "Mod Settings" button mathematically positioned between the "Apply" and "Defaults" buttons in both Lobby settings, Pause settings, and the Main Menu.
