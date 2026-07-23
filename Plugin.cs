@@ -260,12 +260,12 @@ namespace ModSettingsMenu
         private string _status = "";
         private float _statusUntil;
         private bool _stylesBuilt;
-        private float _lastEscapeMenuCheckTime = 0f;
-        private string _lastLoggedScene = "";
         private readonly List<GraphicRaycaster> _disabledRaycasters = new List<GraphicRaycaster>();
 
         // Styles
         private GUIStyle? _header, _subHeader, _label, _desc, _btn, _btnGreen, _btnRed, _tf, _cardStyle;
+        // Cached per-entry styles (built once, reused every frame to avoid GC pressure)
+        private GUIStyle? _secStyle, _labelClean, _labelDirty, _descWrap, _toggleEnabled, _toggleDisabled, _typeStyle, _defStyle;
 
         // Palette
         private static readonly Color BgPanel    = new Color(0.10f, 0.10f, 0.15f, 0.99f);
@@ -361,68 +361,16 @@ namespace ModSettingsMenu
         private static int EntryCount(ModConfig m)
         { int n = 0; foreach (var s in m.Sections) n += s.Entries.Count; return n; }
 
-        // ─── Update Loop (Dynamic Injection & Diagnostics) ───────────────────
+        // ─── Update Loop ───────────────────────────────────────────────────────
 
         private void Update()
         {
-            var sceneName = UnityEngine.SceneManagement.SceneManager.GetActiveScene().name;
-            if (sceneName != _lastLoggedScene)
-            {
-                _lastLoggedScene = sceneName;
-                Plugin.Log?.LogInfo($"[ModSettingsMenu] Active Scene changed to: '{sceneName}'");
-            }
-
-            // Close the mod settings panel if user presses Escape key
+            // Close the mod settings panel if user presses Escape key.
+            // Button injection is handled entirely by Harmony patches — no polling needed.
             if (_visible && Input.GetKeyDown(KeyCode.Escape))
             {
                 Hide();
-                Input.ResetInputAxes(); // Consume keypress to prevent closing background settings
-            }
-
-            // Continually verify button presence in menus when active
-            if (Time.unscaledTime - _lastEscapeMenuCheckTime >= 0.25f)
-            {
-                _lastEscapeMenuCheckTime = Time.unscaledTime;
-                try
-                {
-                    // 1. Scan for active UISettingsScreen (handles Lobby Settings / General Settings panels)
-                    var settingsScreens = Resources.FindObjectsOfTypeAll<UISettingsScreen>();
-                    foreach (var screen in settingsScreens)
-                    {
-                        if (screen != null && screen.gameObject.activeInHierarchy)
-                        {
-                            ButtonInjector.InjectSettingsScreen(screen);
-                        }
-                    }
-
-                    // 2. Scan for Main Menu Managers (handles Lobby Scene's title screen)
-                    var mainMenus = Resources.FindObjectsOfTypeAll<MainMenuManager>();
-                    foreach (var mgr in mainMenus)
-                    {
-                        if (mgr != null && mgr.gameObject.activeInHierarchy)
-                        {
-                            ButtonInjector.InjectMainMenu(mgr);
-                        }
-                    }
-
-                    // 3. Scan for Escape Menus
-                    var escapeMenus = Resources.FindObjectsOfTypeAll<UIEscapeMenu>();
-                    foreach (var menu in escapeMenus)
-                    {
-                        if (menu != null && menu.gameObject.activeInHierarchy)
-                        {
-                            var mainPanel = ButtonInjector.GetField<GameObject>(menu, "mainPanel");
-                            if (mainPanel != null && mainPanel.activeInHierarchy)
-                            {
-                                ButtonInjector.InjectEscapeMenu(menu);
-                            }
-                        }
-                    }
-                }
-                catch (Exception ex)
-                {
-                    Plugin.Log?.LogError("Button injector scan error: " + ex.Message);
-                }
+                Input.ResetInputAxes();
             }
         }
 
@@ -593,14 +541,11 @@ namespace ModSettingsMenu
 
             foreach (var sec in mod.Sections)
             {
-                // Section Header banner
+                // Section Header banner — uses pre-cached style, no allocation
                 GUILayout.Space(6f);
-                var secStyle = new GUIStyle(_label!) { fontStyle = FontStyle.Bold };
-                SetStyleTextColors(secStyle, Accent);
-                
                 GUILayout.BeginHorizontal();
                 GUILayout.Space(4f);
-                GUILayout.Label(sec.Name, secStyle);
+                GUILayout.Label(sec.Name, _secStyle!);
                 GUILayout.EndHorizontal();
                 
                 // Draw line under section header
@@ -612,22 +557,15 @@ namespace ModSettingsMenu
                 {
                     bool dirty = e.IsDirty;
                     
-                    // Render row as a dynamic card layout
+                    // Render row as a dynamic card layout — all styles pre-cached
                     GUILayout.BeginVertical(_cardStyle!);
                     GUILayout.BeginHorizontal();
                     
                     // Left Column: Key & Description (58% width)
                     GUILayout.BeginVertical(GUILayout.Width((r.width - 60f) * 0.58f));
-                    var labelStyle = new GUIStyle(_label!) {
-                        fontStyle = FontStyle.Bold,
-                        normal = { textColor = dirty ? Dirty : TextMain }
-                    };
-                    GUILayout.Label(e.Key, labelStyle);
+                    GUILayout.Label(e.Key, dirty ? _labelDirty! : _labelClean!);
                     if (e.Description.Length > 0)
-                    {
-                        var descStyle = new GUIStyle(_desc!) { wordWrap = true };
-                        GUILayout.Label(e.Description, descStyle);
-                    }
+                        GUILayout.Label(e.Description, _descWrap!);
                     GUILayout.EndVertical();
                     
                     GUILayout.Space(14f);
@@ -639,10 +577,7 @@ namespace ModSettingsMenu
                         bool cur = e.PendingValue.Equals("true", StringComparison.OrdinalIgnoreCase);
                         GUILayout.BeginHorizontal();
                         bool nxt = GUILayout.Toggle(cur, "");
-                        var toggleLblStyle = new GUIStyle(_label!) {
-                            normal = { textColor = cur ? Green : TextSub }
-                        };
-                        GUILayout.Label(cur ? "Enabled" : "Disabled", toggleLblStyle);
+                        GUILayout.Label(cur ? "Enabled" : "Disabled", cur ? _toggleEnabled! : _toggleDisabled!);
                         GUILayout.EndHorizontal();
                         if (nxt != cur) e.PendingValue = nxt ? "true" : "false";
                     }
@@ -653,18 +588,12 @@ namespace ModSettingsMenu
                         if (nv != e.PendingValue) e.PendingValue = nv;
                     }
 
-                    // Metadata labels (Type & Default) with separation
+                    // Metadata labels (Type & Default) — pre-cached styles
                     GUILayout.Space(6f);
                     if (e.SettingType.Length > 0)
-                    {
-                        var typeStyle = new GUIStyle(_desc!) { normal = { textColor = TextSub } };
-                        GUILayout.Label("Type: " + e.SettingType, typeStyle);
-                    }
+                        GUILayout.Label("Type: " + e.SettingType, _typeStyle!);
                     if (e.DefaultValue.Length > 0)
-                    {
-                        var defStyle = new GUIStyle(_desc!) { normal = { textColor = new Color(0.78f, 0.82f, 0.90f, 1f) } };
-                        GUILayout.Label("Default: " + e.DefaultValue, defStyle);
-                    }
+                        GUILayout.Label("Default: " + e.DefaultValue, _defStyle!);
                     
                     GUILayout.EndVertical();
                     GUILayout.EndHorizontal();
@@ -723,7 +652,7 @@ namespace ModSettingsMenu
         {
             _stylesBuilt = true;
 
-            // Generate texture and mark it as DontSave so Unity does not destroy it on scene load/match starts!
+            // Generate 1x1 texture, marked DontSave so Unity won't destroy it on scene transitions.
             Texture2D Mk(Color c) { 
                 var t = new Texture2D(1,1); 
                 t.SetPixel(0,0,c); 
@@ -798,6 +727,32 @@ namespace ModSettingsMenu
                 margin = new RectOffset(4, 4, 4, 4),
                 normal = { background = cardBg }
             };
+
+            // ── Pre-cached per-entry styles (built once, zero per-frame allocations) ──
+
+            _secStyle = new GUIStyle(_label!) { fontStyle = FontStyle.Bold };
+            SetStyleTextColors(_secStyle, Accent);
+
+            _labelClean = new GUIStyle(_label!) { fontStyle = FontStyle.Bold };
+            SetStyleTextColors(_labelClean, TextMain);
+
+            _labelDirty = new GUIStyle(_label!) { fontStyle = FontStyle.Bold };
+            SetStyleTextColors(_labelDirty, Dirty);
+
+            _descWrap = new GUIStyle(_desc!) { wordWrap = true };
+            SetStyleTextColors(_descWrap, TextSub);
+
+            _toggleEnabled = new GUIStyle(_label!);
+            SetStyleTextColors(_toggleEnabled, Green);
+
+            _toggleDisabled = new GUIStyle(_label!);
+            SetStyleTextColors(_toggleDisabled, TextSub);
+
+            _typeStyle = new GUIStyle(_desc!);
+            SetStyleTextColors(_typeStyle, TextSub);
+
+            _defStyle = new GUIStyle(_desc!);
+            SetStyleTextColors(_defStyle, new Color(0.78f, 0.82f, 0.90f, 1f));
         }
     }
 
