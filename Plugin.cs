@@ -347,7 +347,7 @@ namespace ModSettingsMenu
                 catch (Exception ex) { Plugin.Log?.LogError("Save failed: " + ex); err = true; }
             }
             SetStatus(err ? "✗ Some saves failed — check BepInEx log."
-                          : "✔ Saved! Settings reloaded live for active mods.");
+                          : "✔ Saved! Reloaded live (some mods may require a restart).");
         }
 
         private static void TriggerLiveReload(ModConfig mod)
@@ -504,6 +504,12 @@ namespace ModSettingsMenu
                 bool isErr = _status.StartsWith("✗");
                 SetColor(isErr ? new Color(1f, 0.35f, 0.35f) : new Color(0.3f, 0.95f, 0.5f));
                 GUI.Label(new Rect(r.x + 18f, fY + 18f, r.width - 340f, 22f), _status, _label!);
+                SetColor(Color.white);
+            }
+            else
+            {
+                SetColor(new Color(0.68f, 0.72f, 0.80f, 0.85f));
+                GUI.Label(new Rect(r.x + 18f, fY + 18f, r.width - 340f, 22f), "* Note: Some settings may require a game restart to take effect.", _desc!);
                 SetColor(Color.white);
             }
 
