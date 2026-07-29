@@ -329,7 +329,7 @@ namespace ModSettingsMenu
 
         private void Reload()
         {
-            _configs = CfgParser.LoadAll(Path.Combine(Paths.BepInExRootPath, "config"));
+            _configs = CfgParser.LoadAll(Paths.ConfigPath);
             if (_selMod >= _configs.Count) _selMod = 0;
         }
 
@@ -339,11 +339,53 @@ namespace ModSettingsMenu
             foreach (var m in _configs)
             {
                 if (!HasDirty(m)) continue;
-                try { CfgParser.Save(m); }
+                try
+                {
+                    CfgParser.Save(m);
+                    TriggerLiveReload(m);
+                }
                 catch (Exception ex) { Plugin.Log?.LogError("Save failed: " + ex); err = true; }
             }
             SetStatus(err ? "✗ Some saves failed — check BepInEx log."
-                          : "✔ Saved! Restart may be needed for changes to apply.");
+                          : "✔ Saved! Settings reloaded live for active mods.");
+        }
+
+        private static void TriggerLiveReload(ModConfig mod)
+        {
+            try
+            {
+                var loadedPlugins = BepInEx.Bootstrap.Chainloader.PluginInfos;
+                string fileName = Path.GetFileNameWithoutExtension(mod.FilePath);
+
+                foreach (var info in loadedPlugins.Values)
+                {
+                    if (info == null || info.Metadata == null || info.Instance == null) continue;
+
+                    bool match = false;
+                    if (!string.IsNullOrEmpty(mod.PluginGuid) && info.Metadata.GUID.Equals(mod.PluginGuid, StringComparison.OrdinalIgnoreCase))
+                        match = true;
+                    else if (info.Metadata.GUID.Equals(fileName, StringComparison.OrdinalIgnoreCase))
+                        match = true;
+                    else if (info.Metadata.Name.Equals(mod.ModName, StringComparison.OrdinalIgnoreCase))
+                        match = true;
+                    else if (!string.IsNullOrEmpty(info.Location) && Path.GetFileNameWithoutExtension(info.Location).Equals(fileName, StringComparison.OrdinalIgnoreCase))
+                        match = true;
+
+                    if (match)
+                    {
+                        var config = info.Instance.Config;
+                        if (config != null)
+                        {
+                            config.Reload();
+                            Plugin.Log?.LogInfo($"Triggered live Config.Reload() for active plugin '{info.Metadata.GUID}'.");
+                        }
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Plugin.Log?.LogError("Error triggering live config reload: " + ex);
+            }
         }
 
         private void DoDiscard()

@@ -10,11 +10,11 @@
 
   <ItemGroup>
     <Reference Include="BepInEx">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sineus Arena\BepInEx\core\BepInEx.dll</HintPath>
+      <HintPath>C:\Users\luah8\AppData\Roaming\r2modmanPlus-local\SineusArenaSurvivors\profiles\Default\BepInEx\core\BepInEx.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="0Harmony">
-      <HintPath>C:\Program Files (x86)\Steam\steamapps\common\Sineus Arena\BepInEx\core\0Harmony.dll</HintPath>
+      <HintPath>C:\Users\luah8\AppData\Roaming\r2modmanPlus-local\SineusArenaSurvivors\profiles\Default\BepInEx\core\0Harmony.dll</HintPath>
       <Private>false</Private>
     </Reference>
     <Reference Include="UnityEngine">
